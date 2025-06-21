@@ -1,0 +1,13 @@
+{
+  "name": "proxii",
+  "private": true,
+  "dependencies": {
+    "@types/bun": "^1.2.17",
+    "yaml": "^2.8.0",
+    "zod": "^3.25.67"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun run --watch src/index.ts"
+  }
+}

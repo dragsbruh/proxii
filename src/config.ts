@@ -1,0 +1,40 @@
+import { z } from "zod";
+import yaml from "yaml";
+
+const serviceSchema = z.strictObject({
+  name: z.string().describe("display name for service"),
+  origin: z
+    .string()
+    .url()
+    .describe(
+      "forward requests to this url (forwarded to origin+receivedPath)"
+    ),
+  host: z
+    .union([
+      z.string().describe("only forward requests to this host header"),
+      z
+        .array(z.string())
+        .min(1)
+        .describe("forward requests only from these hosts (host header)"),
+    ])
+    .optional(),
+  basePath: z
+    .string()
+    .optional()
+    .describe("only forward requests if the path starts with this"),
+  trimBase: z
+    .boolean()
+    .default(true)
+    .describe("trim the basepath before forwarding (if basePath is set)"),
+});
+
+const configSchema = z.strictObject({
+  port: z.number().default(3000),
+  services: z.array(serviceSchema),
+});
+
+export const config = configSchema.parse(
+  yaml.parse(await Bun.file("proxii.yaml").text())
+);
+
+export type ProxiiService = z.infer<typeof serviceSchema>;
