@@ -1,73 +1,9 @@
-import { config, ProxiiService } from "./config";
-
-function findService(host: string | null, path: string) {
-  for (const service of config.services) {
-    const matchesHost =
-      !service.host ||
-      (host && Array.isArray(service.host) && service.host.includes(host)) ||
-      service.host === host;
-
-    const matchesPath = !service.basePath || path.startsWith(service.basePath);
-
-    if (matchesHost && matchesPath) return service;
-  }
-  return null;
-}
-
-async function proxyRequest(request: Request, target: string) {
-  const headers = new Headers(request.headers);
-  headers.delete("Host");
-
-  try {
-    const originResponse = await fetch(target, {
-      ...request,
-      headers,
-    });
-
-    return new Response(originResponse.body, {
-      status: originResponse.status,
-      statusText: originResponse.statusText,
-      headers: cleanHeaders(originResponse.headers),
-    });
-  } catch (e) {
-    console.error("[proxii] error fetching", target);
-    console.error(e);
-    return Response.json({ message: "service unavailable" }, { status: 502 });
-  }
-}
-
-async function proxyWebsocket(
-  request: Request,
-  server: Bun.Server,
-  target: string
-) {
-  const upstream = new WebSocket(target);
-
-  if (!server.upgrade(request, { data: { upstream } })) {
-    return Response.json(
-      { message: "could not upgrade to websocket" },
-      { status: 500 }
-    );
-  }
-
-  return;
-}
-
-function prepareTargetUrl(path: string, service: ProxiiService) {
-  const trimmedPath =
-    service.basePath && service.trimBase
-      ? path.slice(service.basePath.length) || "/"
-      : path;
-
-  const originHasSlash = service.origin.endsWith("/");
-  const pathHasSlash = trimmedPath.startsWith("/");
-
-  return originHasSlash
-    ? service.origin + (pathHasSlash ? trimmedPath.slice(1) : trimmedPath)
-    : service.origin + (pathHasSlash ? trimmedPath : "/" + trimmedPath);
-}
+import { proxyRequest, proxyWebsocket } from "./proxy";
+import { prepareTargetUrl } from "./utils";
+import { config } from "./config";
 
 console.log("[proxii] server starting on port", config.port);
+
 Bun.serve<{ upstream: WebSocket }, {}>({
   port: config.port,
   async fetch(request, server) {
@@ -104,13 +40,16 @@ Bun.serve<{ upstream: WebSocket }, {}>({
   },
 });
 
-function cleanHeaders(headers: Headers): Headers {
-  const cleaned = new Headers(headers);
+function findService(host: string | null, path: string) {
+  for (const service of config.services) {
+    const matchesHost =
+      !service.host ||
+      (host && Array.isArray(service.host) && service.host.includes(host)) ||
+      service.host === host;
 
-  cleaned.delete("content-encoding");
-  cleaned.delete("content-length");
-  cleaned.delete("transfer-encoding");
-  cleaned.delete("connection");
+    const matchesPath = !service.basePath || path.startsWith(service.basePath);
 
-  return cleaned;
+    if (matchesHost && matchesPath) return service;
+  }
+  return null;
 }
