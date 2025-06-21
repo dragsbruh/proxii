@@ -1,6 +1,12 @@
 import { z } from "zod";
 import yaml from "yaml";
 
+const envSchema = z.object({
+  DATABASE_URL: z.string(),
+});
+
+export const env = envSchema.parse(Bun.env);
+
 const serviceSchema = z.strictObject({
   name: z.string().describe("display name for service"),
   origin: z

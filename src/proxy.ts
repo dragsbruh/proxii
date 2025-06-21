@@ -1,8 +1,16 @@
+import { RequestAnalytics } from "./db/schema";
+import { datastore } from "./db/store";
 import { cleanHeaders } from "./utils";
 
-export async function proxyRequest(request: Request, target: string) {
+export async function proxyRequest(
+  request: Request,
+  target: string,
+  analytics: RequestAnalytics
+) {
   const headers = new Headers(request.headers);
   headers.delete("Host");
+
+  const requestStart = Date.now();
 
   try {
     const originResponse = await fetch(target, {
@@ -10,7 +18,33 @@ export async function proxyRequest(request: Request, target: string) {
       headers,
     });
 
-    return new Response(originResponse.body, {
+    const reader = originResponse.body?.getReader();
+    if (!reader) throw new Error("No response body");
+
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+
+    let totalBytes = 0;
+
+    const pump = async () => {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        totalBytes += value.byteLength;
+        await writer.write(value);
+      }
+      await writer.close();
+
+      analytics.bytesSent += totalBytes;
+      analytics.durationMs = Date.now() - requestStart;
+      analytics.statusCode = originResponse.status;
+
+      await datastore.saveAnalyticsReport(analytics);
+    };
+
+    pump();
+
+    return new Response(readable, {
       status: originResponse.status,
       statusText: originResponse.statusText,
       headers: cleanHeaders(originResponse.headers),
@@ -25,11 +59,12 @@ export async function proxyRequest(request: Request, target: string) {
 export async function proxyWebsocket(
   request: Request,
   server: Bun.Server,
-  target: string
+  target: string,
+  analytics: RequestAnalytics
 ) {
   const upstream = new WebSocket(target);
 
-  if (!server.upgrade(request, { data: { upstream } })) {
+  if (!server.upgrade(request, { data: { upstream, analytics } })) {
     return Response.json(
       { message: "could not upgrade to websocket" },
       { status: 500 }
