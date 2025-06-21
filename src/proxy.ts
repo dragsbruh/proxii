@@ -1,6 +1,6 @@
 import { RequestAnalytics } from "./db/schema";
-import { datastore } from "./db/store";
 import { cleanHeaders } from "./utils";
+import { datastore } from "./db/store";
 
 export async function proxyRequest(
   request: Request,

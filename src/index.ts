@@ -1,9 +1,9 @@
 import { proxyRequest, proxyWebsocket } from "./proxy";
 import { RequestAnalytics } from "./db/schema";
 import { prepareTargetUrl } from "./utils";
+import { datastore } from "./db/store";
 import { config } from "./config";
 import { ulid } from "ulid";
-import { datastore } from "./db/store";
 
 console.log("[proxii] server starting on port", config.port);
 
