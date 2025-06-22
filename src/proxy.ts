@@ -7,7 +7,6 @@ export async function proxyRequest(
   target: URL,
   analytics: RequestAnalytics
 ) {
-  const requestUrl = new URL(request.url);
   const headers = new Headers(request.headers);
 
   const realProtocol =

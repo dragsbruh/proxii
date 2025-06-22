@@ -14,40 +14,45 @@ Bun.serve<
   port: config.port,
   idleTimeout: 60,
   async fetch(request, server) {
-    const host = request.headers.get("Host");
-    const requestUrl = new URL(request.url);
+    try {
+      const host = request.headers.get("Host");
+      const requestUrl = new URL(request.url);
 
-    const service = findService(host, requestUrl.pathname);
-    if (service) {
-      const target = prepareTargetUrl(requestUrl, service);
+      const service = findService(host, requestUrl.pathname);
+      if (service) {
+        const target = prepareTargetUrl(requestUrl, service);
 
-      const connection = request.headers.get("Connection")?.toLowerCase();
-      const upgradeType = request.headers.get("Upgrade")?.toLowerCase();
+        const connection = request.headers.get("Connection")?.toLowerCase();
+        const upgradeType = request.headers.get("Upgrade")?.toLowerCase();
 
-      const analytics: RequestAnalytics = {
-        id: ulid(),
-        timestamp: new Date(),
-        method: request.method,
-        url: request.url,
-        origin: target.toString(),
-        statusCode: 0,
-        referer: request.headers.get("referer"),
-        userAgent: request.headers.get("user-agent"),
-        ipAddress: server.requestIP(request)?.address ?? "anon",
-        forwardedFor: request.headers.get("x-forwarded-for") ?? "",
-        bytesSent: 0,
-        bytesReceived: parseInt(request.headers.get("content-length") ?? "0"),
-        durationMs: 0,
-      };
-      request.headers.set("x-real-ip", analytics.ipAddress);
+        const analytics: RequestAnalytics = {
+          id: ulid(),
+          timestamp: new Date(),
+          method: request.method,
+          url: request.url,
+          origin: target.toString(),
+          statusCode: 0,
+          referer: request.headers.get("referer"),
+          userAgent: request.headers.get("user-agent"),
+          ipAddress: server.requestIP(request)?.address ?? "anon",
+          forwardedFor: request.headers.get("x-forwarded-for") ?? "",
+          bytesSent: 0,
+          bytesReceived: parseInt(request.headers.get("content-length") ?? "0"),
+          durationMs: 0,
+        };
+        request.headers.set("x-real-ip", analytics.ipAddress);
 
-      if (connection?.includes("upgrade") && upgradeType === "websocket") {
-        return proxyWebsocket(request, server, target, analytics);
+        if (connection?.includes("upgrade") && upgradeType === "websocket") {
+          return proxyWebsocket(request, server, target, analytics);
+        }
+        return proxyRequest(request, target, analytics);
       }
-      return proxyRequest(request, target, analytics);
-    }
 
-    return Response.json({ message: "service not found" }, { status: 502 });
+      return Response.json({ message: "service not found" }, { status: 502 });
+    } catch (e) {
+      console.error("[proxii] top level error");
+      console.error(e);
+    }
   },
   websocket: {
     message(ws, message) {
