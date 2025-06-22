@@ -11,16 +11,26 @@ export function cleanHeaders(headers: Headers): Headers {
   return cleaned;
 }
 
-export function prepareTargetUrl(path: string, service: ProxiiService) {
+export function prepareTargetUrl(url: URL, service: ProxiiService) {
+  const final = new URL(url);
+
   const trimmedPath =
     service.basePath && service.trimBase
-      ? path.slice(service.basePath.length) || "/"
-      : path;
+      ? url.pathname.slice(service.basePath.length) || "/"
+      : url.pathname;
 
   const originHasSlash = service.origin.endsWith("/");
   const pathHasSlash = trimmedPath.startsWith("/");
 
-  return originHasSlash
-    ? service.origin + (pathHasSlash ? trimmedPath.slice(1) : trimmedPath)
-    : service.origin + (pathHasSlash ? trimmedPath : "/" + trimmedPath);
+  final.pathname = originHasSlash
+    ? pathHasSlash
+      ? trimmedPath.slice(1)
+      : trimmedPath
+    : pathHasSlash
+    ? trimmedPath
+    : "/" + trimmedPath;
+
+  final.host = new URL(service.origin).host;
+  console.log(final)
+  return final;
 }

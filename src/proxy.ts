@@ -4,12 +4,11 @@ import { datastore } from "./db/store";
 
 export async function proxyRequest(
   request: Request,
-  target: string,
+  target: URL,
   analytics: RequestAnalytics
 ) {
-  const realUrl = new URL(request.url);
+  const requestUrl = new URL(request.url);
   const headers = new Headers(request.headers);
-  headers.set("Host", realUrl.host);
 
   const realProtocol =
     request.headers.get("x-forwarded-proto") ??
@@ -68,7 +67,7 @@ export async function proxyRequest(
 export async function proxyWebsocket(
   request: Request,
   server: Bun.Server,
-  target: string,
+  target: URL,
   analytics: RequestAnalytics
 ) {
   const upstream = new WebSocket(target);

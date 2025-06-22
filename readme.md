@@ -102,4 +102,5 @@ licensed under the [apache license 2.0](./license).
 
 ## todo
 
+- [ ] check everything if forwarding is done right, there were some issues
 - [ ] metrics dashboard

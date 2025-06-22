@@ -15,11 +15,11 @@ Bun.serve<
   idleTimeout: 60,
   async fetch(request, server) {
     const host = request.headers.get("Host");
-    const path = new URL(request.url).pathname;
+    const requestUrl = new URL(request.url);
 
-    const service = findService(host, path);
+    const service = findService(host, requestUrl.pathname);
     if (service) {
-      const target = prepareTargetUrl(path, service);
+      const target = prepareTargetUrl(requestUrl, service);
 
       const connection = request.headers.get("Connection")?.toLowerCase();
       const upgradeType = request.headers.get("Upgrade")?.toLowerCase();
@@ -29,7 +29,7 @@ Bun.serve<
         timestamp: new Date(),
         method: request.method,
         url: request.url,
-        origin: target,
+        origin: target.toString(),
         statusCode: 0,
         referer: request.headers.get("referer"),
         userAgent: request.headers.get("user-agent"),
