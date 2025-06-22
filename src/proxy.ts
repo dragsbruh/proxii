@@ -7,8 +7,15 @@ export async function proxyRequest(
   target: string,
   analytics: RequestAnalytics
 ) {
+  const realUrl = new URL(request.url);
   const headers = new Headers(request.headers);
-  headers.delete("Host");
+  headers.set("Host", realUrl.host);
+
+  const realProtocol =
+    request.headers.get("x-forwarded-proto") ??
+    (request.url.startsWith("https://") ? "https" : "http");
+
+  headers.set("x-forwarded-proto", realProtocol);
 
   const requestStart = Date.now();
 
