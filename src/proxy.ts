@@ -14,8 +14,10 @@ export async function proxyRequest(
 
   try {
     const originResponse = await fetch(target, {
-      ...request,
+      method: request.method,
       headers,
+      body: request.body,
+      redirect: "manual",
     });
 
     const reader = originResponse.body?.getReader();
