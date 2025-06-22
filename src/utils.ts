@@ -31,6 +31,5 @@ export function prepareTargetUrl(url: URL, service: ProxiiService) {
     : "/" + trimmedPath;
 
   final.host = new URL(service.origin).host;
-  console.log(final)
   return final;
 }
