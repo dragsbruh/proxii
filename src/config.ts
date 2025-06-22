@@ -1,6 +1,7 @@
 import { z } from "zod";
 import yaml from "yaml";
 import { existsSync } from "fs";
+import { resolve } from "path";
 
 const envSchema = z.object({
   DATABASE_URL: z.string(),
@@ -10,12 +11,24 @@ export const env = envSchema.parse(Bun.env);
 
 const serviceSchema = z.strictObject({
   name: z.string().describe("display name for service"),
-  origin: z
-    .string()
-    .url()
-    .describe(
-      "forward requests to this url (forwarded to origin+receivedPath)"
-    ),
+  target: z.union([
+    z.strictObject({
+      serveStatic: z.literal(false).default(false),
+      origin: z
+        .string()
+        .url()
+        .describe(
+          "forward requests to this url (forwarded to origin+receivedPath)"
+        ),
+    }),
+    z.strictObject({
+      serveStatic: z.literal(true),
+      staticDir: z
+        .string()
+        .describe("directory to serve static files from")
+        .transform((path) => resolve(path)),
+    }),
+  ]),
   host: z
     .union([
       z.string().describe("only forward requests to this host header"),

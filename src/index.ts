@@ -1,4 +1,8 @@
+import { join, resolve } from "path";
 import { config } from "./config";
+import { exists } from "fs/promises";
+import { stat } from "fs/promises";
+import { readdir } from "fs/promises";
 
 console.log("[proxii] server starting on port", config.port);
 
@@ -29,14 +33,45 @@ Bun.serve<{ target: URL; upstream: WebSocket }, {}>({
 
     if (!service) return new Response("service not found", { status: 502 });
 
-    const origin = new URL(service.origin);
-
-    target.protocol = origin.protocol;
-    target.host = origin.host;
-
     if (service.trimBase && service.basePath) {
       target.pathname = target.pathname.replace(service.basePath, "");
     }
+
+    if (service.target.serveStatic) {
+      const filePath = join(service.target.staticDir, target.pathname);
+
+      const file = Bun.file(filePath);
+      if (
+        !filePath.startsWith(service.target.staticDir) ||
+        !(await exists(filePath))
+      ) {
+        return new Response("file not found", { status: 404 });
+      }
+
+      const stat = await file.stat();
+      if (stat.isDirectory()) {
+        
+        const contents = ["..", ...(await readdir(filePath))]
+          .map(
+            (file) => `<a href="${join(url.pathname, file)}">${file}</a>`
+          )
+          .join("<br>");
+        return new Response(contents, {
+          headers: {
+            "Content-Type": "text/html",
+          },
+        });
+      } else if (!stat.isFile()) {
+        return new Response("file not found", { status: 404 });
+      }
+
+      return new Response(file);
+    }
+
+    const origin = new URL(service.target.origin);
+
+    target.protocol = origin.protocol;
+    target.host = origin.host;
 
     const forwardedProto =
       request.headers.get("x-forwarded-proto") ??
