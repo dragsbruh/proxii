@@ -39,6 +39,7 @@ Bun.serve<
         bytesReceived: parseInt(request.headers.get("content-length") ?? "0"),
         durationMs: 0,
       };
+      request.headers.set("x-real-ip", analytics.ipAddress);
 
       if (connection?.includes("upgrade") && upgradeType === "websocket") {
         return proxyWebsocket(request, server, target, analytics);
