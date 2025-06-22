@@ -47,7 +47,7 @@ Bun.serve<{ target: URL; upstream: WebSocket }, {}>({
     headers.set("x-real-ip", server.requestIP(request)?.address ?? "anon");
 
     const isWebsocket =
-      headers.get("connection")?.toLowerCase() === "upgrade" &&
+      headers.get("connection")?.toLowerCase().includes("upgrade") &&
       headers.get("upgrade")?.toLowerCase() === "websocket";
 
     if (isWebsocket) {
@@ -56,7 +56,7 @@ Bun.serve<{ target: URL; upstream: WebSocket }, {}>({
           status: 426,
         });
       }
-      return;
+      return undefined;
     }
 
     const response = await fetch(target, {
