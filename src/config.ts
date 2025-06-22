@@ -1,5 +1,6 @@
 import { z } from "zod";
 import yaml from "yaml";
+import { existsSync } from "fs";
 
 const envSchema = z.object({
   DATABASE_URL: z.string(),
@@ -39,8 +40,22 @@ const configSchema = z.strictObject({
   services: z.array(serviceSchema),
 });
 
+const configPaths = [
+  "./proxii.yaml",
+  "./proxii.yml",
+  "/app/proxii.yaml",
+  "/app/proxii.yml",
+  "/etc/proxii/proxii.yaml",
+  "/etc/proxii/proxii.yml",
+];
+const configPath = configPaths.find(existsSync);
+if (!configPath)
+  throw new Error(
+    `proxii.yaml not found, checked in ${configPaths.join(", ")}`
+  );
+
 export const config = configSchema.parse(
-  yaml.parse(await Bun.file("proxii.yaml").text())
+  yaml.parse(await Bun.file(configPath).text())
 );
 
 export type ProxiiService = z.infer<typeof serviceSchema>;
