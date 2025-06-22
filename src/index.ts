@@ -12,6 +12,7 @@ Bun.serve<
   {}
 >({
   port: config.port,
+  idleTimeout: 60,
   async fetch(request, server) {
     const host = request.headers.get("Host");
     const path = new URL(request.url).pathname;
