@@ -1,7 +1,6 @@
-# proxii >~<
+# proxii >\~<
 
-**proxii** is a lightweight reverse proxy written in [bun](https://bun.sh), with support for websockets (experimental), and basic analytics collection. (also experimental)
-you can define services with a simple `proxii.yaml`
+**proxii** is a lightweight reverse proxy written in [bun](https://bun.sh), supporting websockets and static file serving. services are defined declaratively in a `proxii.yaml`.
 
 > still early
 
@@ -9,11 +8,9 @@ you can define services with a simple `proxii.yaml`
 
 ## features
 
-- reverse proxying with per-host/path rules
-- built-in request analytics (libsql via drizzle)
+- reverse proxying with per-host and per-path filters
 - experimental websocket proxying
-- configurable via yaml (see below)
-- tiny, dependency-light, bun-native
+- yaml-based configuration
 
 ---
 
@@ -23,84 +20,66 @@ you can define services with a simple `proxii.yaml`
 bun install
 ```
 
-then run proxii:
+Then, run:
 
 ```bash
 bun start
 ```
 
-make sure to have a `proxii.yaml` in the working directory.
+make sure `proxii.yaml` is in the working directory or in one of the standard paths (`/etc/proxii`, `/app`, or cwd etc).
 
 ---
 
 ## configuration (`proxii.yaml`)
 
 ```yaml
-# this is my actual proxii configuration at the time of writing
 port: 80
 services:
   - name: gitea
-    origin: http://127.0.0.1:9001
+    target:
+      origin: http://127.0.0.1:9001
     basePath: /tea
     host:
       - git.local
       - waifustation.miku-royal.ts.net
+  - name: .well-known
+    target:
+      serveStatic: true
+      staticDir: ./data/.well-known
+    basePath: /.well-known
+    host:
+      - waifustation.miku-royal.ts.net
 ```
 
-### service fields
+### Service Fields
 
-| field      | description                                                                    |
-| ---------- | ------------------------------------------------------------------------------ |
-| `name`     | display name for the service                                                   |
-| `origin`   | the upstream target (where to forward requests)                                |
-| `host`     | optional. limit to specific `host` headers                                     |
-| `basePath` | optional. limit to requests under a specific path                              |
-| `trimBase` | optional. defaults to `true`. whether to remove `basePath` from forwarded path |
+| Field       | Description                                                                |
+| ----------- | -------------------------------------------------------------------------- |
+| `name`      | Display name for the service                                               |
+| `origin`    | URL to forward requests to (overridden by `serveStatic` if set)            |
+| `staticDir` | If `serveStatic` is `true`, path to serve static files from                |
+| `host`      | Optional. One or more host headers to match (string or array of strings)   |
+| `basePath`  | Optional. Only match requests starting with this path                      |
+| `trimBase`  | Optional. Defaults to `true`. If set, removes `basePath` from request path |
 
----
-
-## analytics (wip)
-
-proxii tracks basic analytics for each request:
-
-```ts
-{
-  id, // ulid
-    timestamp, // request start time
-    method,
-    url,
-    origin, // full upstream url
-    statusCode,
-    referer,
-    userAgent,
-    ipAddress,
-    forwardedFor, // x-forwarded-for
-    bytesSent,
-    bytesReceived,
-    durationMs;
-}
-```
-
-currently stored using drizzle with libsql.
+Only one of `origin` or `staticDir` should be defined (based on `serveStatic: true|false`).
 
 ---
 
 ## websocket support
 
-proxii supports proxying websocket connections (experimental).
+websocket connections are supported (experimental):
 
-- connections are piped bidirectionally
-- analytics are tracked
+- bidirectional piping
 
 ---
 
 ## license
 
-licensed under the [apache license 2.0](./license).
+licensed under the [apache license 2.0](./LICENSE).
 
 ---
 
 ## todo
 
-- [ ] check everything if forwarding is done right, there were some issues
-- [ ] metrics dashboard
+- [ ] verify forwarding logic
