@@ -2,7 +2,7 @@ import { config } from "./config";
 
 console.log("[proxii] server starting on port", config.port);
 
-Bun.serve({
+Bun.serve<{ target: URL; upstream: WebSocket }, {}>({
   port: config.port,
   idleTimeout: 60,
 
@@ -46,6 +46,19 @@ Bun.serve({
     headers.set("x-forwarded-proto", forwardedProto);
     headers.set("x-real-ip", server.requestIP(request)?.address ?? "anon");
 
+    const isWebsocket =
+      headers.get("connection")?.toLowerCase() === "upgrade" &&
+      headers.get("upgrade")?.toLowerCase() === "websocket";
+
+    if (isWebsocket) {
+      if (!server.upgrade(request, { data: { target } })) {
+        return new Response("could not upgrade connection to websocket", {
+          status: 426,
+        });
+      }
+      return;
+    }
+
     const response = await fetch(target, {
       method: request.method,
       body: ["GET", "HEAD", "OPTIONS"].includes(request.method)
@@ -58,5 +71,19 @@ Bun.serve({
     response.headers.delete("content-encoding");
     response.headers.delete("content-length");
     return response;
+  },
+
+  websocket: {
+    open(ws) {
+      ws.data.upstream = new WebSocket(ws.data.target);
+      ws.data.upstream.onclose = (e) => ws.close(e.code, e.reason);
+      ws.data.upstream.onmessage = (e) => ws.send(e.data);
+    },
+    message(ws, message) {
+      ws.data.upstream.send(message);
+    },
+    close(ws, code, reason) {
+      ws.data.upstream.close(code, reason);
+    },
   },
 });
