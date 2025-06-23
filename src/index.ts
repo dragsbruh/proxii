@@ -21,7 +21,7 @@ Bun.serve<{ target: URL; upstream: WebSocket; service: ProxiiService }, {}>({
       config.services
     );
     if (needsRedirect) {
-      return Response.redirect(new URL(service, url), 302);
+      return Response.redirect(service, 302);
     }
 
     if (!service) {
