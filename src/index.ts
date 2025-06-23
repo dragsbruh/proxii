@@ -50,11 +50,8 @@ Bun.serve<{ target: URL; upstream: WebSocket }, {}>({
 
       const stat = await file.stat();
       if (stat.isDirectory()) {
-        
         const contents = ["..", ...(await readdir(filePath))]
-          .map(
-            (file) => `<a href="${join(url.pathname, file)}">${file}</a>`
-          )
+          .map((file) => `<a href="${join(url.pathname, file)}">${file}</a>`)
           .join("<br>");
         return new Response(contents, {
           headers: {
