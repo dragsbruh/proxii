@@ -1,3 +1,6 @@
+import * as setCookieLib from "set-cookie-parser";
+import cookieLib from "cookie";
+
 import { config, ProxiiService } from "./config";
 import { readdir, exists } from "fs/promises";
 import { join, resolve } from "path";
@@ -12,22 +15,14 @@ Bun.serve<{ target: URL; upstream: WebSocket; service: ProxiiService }, {}>({
     const url = new URL(request.url);
     const target = new URL(url);
 
-    const service = config.services.find((service) => {
-      const hostAllowed: boolean = service.host
-        ? (Array.isArray(service.host) ? service.host : [service.host])
-            .map((host) => host.split(":")[0])
-            .includes(url.host.split(":")[0])
-        : true;
-
-      const basePathAllowed = service.basePath
-        ? url.pathname.startsWith(service.basePath) &&
-          ["", "/", undefined].includes(
-            url.pathname.charAt(service.basePath.length)
-          )
-        : true;
-
-      return hostAllowed && basePathAllowed;
-    });
+    const [needsRedirect, service] = matchService(
+      url.host,
+      url.pathname,
+      config.services
+    );
+    if (needsRedirect) {
+      return Response.redirect(new URL(service, url), 302);
+    }
 
     if (!service) {
       if (config.publicDir) {
@@ -39,14 +34,6 @@ Bun.serve<{ target: URL; upstream: WebSocket; service: ProxiiService }, {}>({
         if (response) return response;
       }
       return new Response("service not found", { status: 502 });
-    }
-
-    if (
-      service.enforceTrailingSlash &&
-      target.pathname === service.basePath &&
-      !target.pathname.endsWith("/")
-    ) {
-      return Response.redirect(target.pathname + "/", 302);
     }
 
     if (service.trimBase && service.basePath) {
@@ -111,12 +98,32 @@ Bun.serve<{ target: URL; upstream: WebSocket; service: ProxiiService }, {}>({
     responseHeaders.delete("content-encoding");
     responseHeaders.delete("content-length");
 
-    const rawSetCookies = response.headers.getAll("set-cookie");
-    responseHeaders.delete("set-cookie");
+    if (service.basePath) {
+      const rawSetCookies = response.headers.getAll("set-cookie");
+      responseHeaders.delete("set-cookie");
 
-    for (const cookie of rawSetCookies) {
-      const rewritten = rewriteSetCookiePath(cookie, service.basePath ?? "/");
-      responseHeaders.append("set-cookie", rewritten);
+      for (const cookieRaw of rawSetCookies) {
+        const cookie = setCookieLib.parseString(cookieRaw);
+
+        if (!cookie.path) {
+          cookie.path = service.basePath;
+        } else {
+          const normalizedCookiePath = cookie.path.endsWith("/")
+            ? cookie.path
+            : cookie.path + "/";
+          cookie.path = normalizedCookiePath.startsWith(service.basePath)
+            ? cookie.path
+            : join(service.basePath, cookie.path);
+        }
+
+        const isolated = cookieLib.serialize(
+          cookie.name,
+          cookie.value,
+          cookie as any
+        );
+
+        responseHeaders.append("set-cookie", isolated);
+      }
     }
 
     return new Response(response.body, {
@@ -154,29 +161,6 @@ Bun.serve<{ target: URL; upstream: WebSocket; service: ProxiiService }, {}>({
   },
 });
 
-function rewriteSetCookiePath(cookie: string, basePath: string): string {
-  const normalizedBase = basePath.endsWith("/")
-    ? basePath.slice(0, -1)
-    : basePath;
-
-  if (!/;\s*path=/i.test(cookie)) {
-    return `${cookie}; Path=${normalizedBase || "/"}`;
-  }
-
-  return cookie.replace(/(?<=^|;\s*)path=([^;]*)/i, (_match, pathValue) => {
-    if (pathValue.startsWith(normalizedBase)) {
-      return `Path=${pathValue}`;
-    }
-
-    if (pathValue === "/") {
-      return `Path=${normalizedBase || "/"}`;
-    }
-
-    const newPath = `${normalizedBase}${pathValue}`.replace(/\/{2,}/g, "/");
-    return `Path=${newPath}`;
-  });
-}
-
 async function serveStatic(
   staticDir: string,
   pathname: string,
@@ -198,43 +182,16 @@ async function serveStatic(
   if (stat.isDirectory()) {
     const children = await readdir(filePath);
 
-    const has404 = children.includes("404.html");
-    const hasIndex = children.includes("index.html");
-    const hasFallback = children.includes("fallback.html");
+    const file404 = Bun.file(join(filePath, "_404.html"));
+    const fileIndex = Bun.file(join(filePath, "index.html"));
+    const fileFallback = Bun.file(join(filePath, "_fallback.html"));
 
-    if (hasIndex) return new Response(Bun.file(join(filePath, "index.html")));
-    else if (hasFallback) {
-      return new Response(Bun.file(join(filePath, "fallback.html")));
-    } else if (has404) {
-      return new Response(Bun.file(join(filePath, "404.html")), {
-        status: 404,
-      });
-    } else if (directoryListing) {
-      const html = [
-        `<h1>Index of ${pathname}</h1>`,
-        `<ul>`,
-
-        ...(pathname !== "/" ? [`<li><a href="../">..</a></li>`] : []),
-      ];
-
-      for (const child of children) {
-        const slash = (
-          await Bun.file(join(filePath, child)).stat()
-        ).isDirectory()
-          ? "/"
-          : "";
-
-        const href = join(pathPrefix ?? "", pathname, child);
-        const elem = `<li><a href="${href}${slash}">${child}${slash}</a></li>`;
-
-        html.push(elem);
-      }
-
-      html.push(`</ul>`);
-
-      return new Response(html.join("\n"), {
-        headers: { "Content-Type": "text/html" },
-      });
+    if (await fileIndex.exists()) return new Response(fileIndex);
+    else if (await fileFallback.exists()) return new Response(fileFallback);
+    else if (await file404.exists())
+      return new Response(file404, { status: 404 });
+    else if (directoryListing) {
+      return directoryListingTemplate(pathname, children, filePath, pathPrefix);
     } else {
       return null;
     }
@@ -243,4 +200,82 @@ async function serveStatic(
   }
 
   return null;
+}
+
+async function directoryListingTemplate(
+  currentPath: string,
+  children: string[],
+  directoryPath: string,
+  pathPrefix?: string
+) {
+  const html = [
+    `<h1>Index of ${currentPath}</h1>`,
+    `<ul>`,
+
+    ...(currentPath !== "/" ? [`<li><a href="../">..</a></li>`] : []),
+  ];
+
+  for (const child of children) {
+    const slash = (
+      await Bun.file(join(directoryPath, child)).stat()
+    ).isDirectory()
+      ? "/"
+      : "";
+
+    const href = join(pathPrefix ?? "", currentPath, child);
+    const elem = `<li><a href="${href}${slash}">${child}${slash}</a></li>`;
+
+    html.push(elem);
+  }
+
+  html.push(`</ul>`);
+
+  return new Response(html.join("\n"), {
+    headers: { "Content-Type": "text/html" },
+  });
+}
+
+// returns [false, service] if we did successfully find service
+//         [true, target] if we need to redirect (to enforce trailing slash)
+//         [false, null] if we did not find any service
+function matchService(
+  desiredHost: string,
+  requestedPath: string,
+  services: ProxiiService[]
+): [false, ProxiiService | null] | [true, string] {
+  const normalizedRequestedPath = requestedPath.endsWith("/")
+    ? requestedPath
+    : requestedPath + "/";
+
+  for (const service of services) {
+    let hostAllowed = service.host === undefined;
+    if (service.host) {
+      const matchedHost = service.host.find((definedHost) => {
+        if (definedHost.includes(":")) {
+          return definedHost === desiredHost;
+        } else {
+          return definedHost === desiredHost.split(":")[0];
+        }
+      });
+
+      hostAllowed = matchedHost !== undefined;
+    }
+
+    if (!hostAllowed) continue;
+
+    let pathAllowed = service.basePath === undefined;
+    if (service.basePath) {
+      pathAllowed = normalizedRequestedPath.startsWith(service.basePath);
+      if (
+        pathAllowed &&
+        service.enforceTrailingSlash &&
+        requestedPath.charAt(service.basePath.length - 1) !== "/"
+      ) {
+        return [true, service.basePath];
+      }
+    }
+
+    if (pathAllowed) return [false, service];
+  }
+  return [false, null];
 }

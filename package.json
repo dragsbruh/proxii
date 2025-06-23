@@ -2,6 +2,8 @@
   "name": "proxii",
   "dependencies": {
     "@types/bun": "^1.2.17",
+    "cookie": "^1.0.2",
+    "set-cookie-parser": "^2.7.1",
     "yaml": "^2.8.0",
     "zod": "^3.25.67"
   },
@@ -9,5 +11,8 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun run --watch src/index.ts"
+  },
+  "devDependencies": {
+    "@types/set-cookie-parser": "^2.4.10"
   }
 }
