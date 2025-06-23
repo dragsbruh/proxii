@@ -3,12 +3,6 @@ import { resolve } from "path";
 import { z } from "zod";
 import yaml from "yaml";
 
-const envSchema = z.object({
-  DATABASE_URL: z.string(),
-});
-
-export const env = envSchema.parse(Bun.env);
-
 const serviceSchema = z.strictObject({
   name: z.string().describe("display name for service"),
   target: z.union([
@@ -60,9 +54,7 @@ const configSchema = z.strictObject({
   publicDir: z
     .string()
     .optional()
-    .describe(
-      "only used to serve static files from when service is not found"
-    ),
+    .describe("only used to serve static files from when service is not found")
 });
 
 const configPaths = [
