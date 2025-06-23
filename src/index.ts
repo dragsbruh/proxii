@@ -1,6 +1,6 @@
 import { config, ProxiiService } from "./config";
 import { readdir, exists } from "fs/promises";
-import { join } from "path";
+import { join, resolve } from "path";
 
 console.log("[proxii] server starting on port", config.port);
 
@@ -31,7 +31,11 @@ Bun.serve<{ target: URL; upstream: WebSocket; service: ProxiiService }, {}>({
 
     if (!service) {
       if (config.publicDir) {
-        const response = await serveStatic(config.publicDir, target.pathname);
+        const response = await serveStatic(
+          config.publicDir,
+          target.pathname,
+          false
+        );
         if (response) return response;
       }
       return new Response("service not found", { status: 502 });
@@ -53,7 +57,8 @@ Bun.serve<{ target: URL; upstream: WebSocket; service: ProxiiService }, {}>({
       const response = await serveStatic(
         service.target.staticDir,
         target.pathname,
-        true
+        true,
+        service.basePath
       );
       return response ?? new Response("file not found", { status: 404 });
     }
@@ -134,6 +139,11 @@ Bun.serve<{ target: URL; upstream: WebSocket; service: ProxiiService }, {}>({
       }
       ws.data.upstream.onclose = (e) => ws.close(e.code, e.reason);
       ws.data.upstream.onmessage = (e) => ws.send(e.data);
+      ws.data.upstream.onerror = (e) => {
+        console.error("[proxii] websocket upstream error");
+        console.error(e);
+        ws.close(1011, "webSocket upstream error");
+      };
     },
     message(ws, message) {
       ws.data.upstream.send(message);
@@ -149,9 +159,17 @@ function rewriteSetCookiePath(cookie: string, basePath: string): string {
     ? basePath.slice(0, -1)
     : basePath;
 
-  return cookie.replace(/(?<=^|;\s*)path=(\/[^;]*)/i, (_match, pathValue) => {
+  if (!/;\s*path=/i.test(cookie)) {
+    return `${cookie}; Path=${normalizedBase || "/"}`;
+  }
+
+  return cookie.replace(/(?<=^|;\s*)path=([^;]*)/i, (_match, pathValue) => {
     if (pathValue.startsWith(normalizedBase)) {
       return `Path=${pathValue}`;
+    }
+
+    if (pathValue === "/") {
+      return `Path=${normalizedBase || "/"}`;
     }
 
     const newPath = `${normalizedBase}${pathValue}`.replace(/\/{2,}/g, "/");
@@ -162,28 +180,67 @@ function rewriteSetCookiePath(cookie: string, basePath: string): string {
 async function serveStatic(
   staticDir: string,
   pathname: string,
-  directoryListing: boolean = false
+  directoryListing: boolean = false,
+  pathPrefix?: string
 ) {
-  const filePath = join(staticDir, pathname);
+  pathname = decodeURIComponent(pathname);
+
+  const filePath = resolve(staticDir, "." + pathname);
+  if (!filePath.startsWith(staticDir)) {
+    return new Response("403 Forbidden", { status: 403 });
+  }
+
+  if (!(await exists(filePath))) return null;
 
   const file = Bun.file(filePath);
-  if (!filePath.startsWith(staticDir) || !(await exists(filePath))) {
-    return null;
-  }
-
   const stat = await file.stat();
-  if (stat.isDirectory() && directoryListing) {
-    const contents = ["..", ...(await readdir(filePath))]
-      .map((file) => `<a href="${join(pathname, file)}">${file}</a>`)
-      .join("<br>");
-    return new Response(contents, {
-      headers: {
-        "Content-Type": "text/html",
-      },
-    });
-  } else if (!stat.isFile()) {
-    return null;
+
+  if (stat.isDirectory()) {
+    const children = await readdir(filePath);
+
+    const has404 = children.includes("404.html");
+    const hasIndex = children.includes("index.html");
+    const hasFallback = children.includes("fallback.html");
+
+    if (hasIndex) return new Response(Bun.file(join(filePath, "index.html")));
+    else if (hasFallback) {
+      return new Response(Bun.file(join(filePath, "fallback.html")));
+    } else if (has404) {
+      return new Response(Bun.file(join(filePath, "404.html")), {
+        status: 404,
+      });
+    } else if (directoryListing) {
+      const html = [
+        `<h1>Index of ${pathname}</h1>`,
+        `<ul>`,
+
+        ...(pathname !== "/" ? [`<li><a href="../">..</a></li>`] : []),
+      ];
+
+      for (const child of children) {
+        const slash = (
+          await Bun.file(join(filePath, child)).stat()
+        ).isDirectory()
+          ? "/"
+          : "";
+
+        const href = join(pathPrefix ?? "", pathname, child);
+        const elem = `<li><a href="${href}${slash}">${child}${slash}</a></li>`;
+
+        html.push(elem);
+      }
+
+      html.push(`</ul>`);
+
+      return new Response(html.join("\n"), {
+        headers: { "Content-Type": "text/html" },
+      });
+    } else {
+      return null;
+    }
+  } else if (stat.isFile()) {
+    return new Response(file);
   }
 
-  return new Response(file);
+  return null;
 }

@@ -55,6 +55,7 @@ const configSchema = z.strictObject({
     .string()
     .optional()
     .describe("only used to serve static files from when service is not found")
+    .transform((dir) => (dir ? resolve(dir) : undefined)),
 });
 
 const configPaths = [
