@@ -33,6 +33,14 @@ Bun.serve<{ target: URL; upstream: WebSocket }, {}>({
 
     if (!service) return new Response("service not found", { status: 502 });
 
+    if (
+      service.enforceTrailingSlash &&
+      target.pathname === service.basePath &&
+      !target.pathname.endsWith("/")
+    ) {
+      return Response.redirect(target.pathname + "/", 302);
+    }
+
     if (service.trimBase && service.basePath) {
       target.pathname = target.pathname.replace(service.basePath, "");
     }

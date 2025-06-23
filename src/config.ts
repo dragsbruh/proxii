@@ -46,6 +46,12 @@ const serviceSchema = z.strictObject({
     .boolean()
     .default(true)
     .describe("trim the basepath before forwarding (if basePath is set)"),
+  enforceTrailingSlash: z
+    .boolean()
+    .default(false)
+    .describe(
+      "enforce a trailing slash if /basePath is accessed (redirects to /basePath/"
+    ),
 });
 
 const configSchema = z.strictObject({
