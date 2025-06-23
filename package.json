@@ -1,21 +1,13 @@
 {
   "name": "proxii",
-  "private": true,
-  "scripts": {
-    "start": "bun run src/index.ts",
-    "dev": "bun run --watch src/index.ts",
-    "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
-  },
   "dependencies": {
-    "@libsql/client": "^0.15.9",
     "@types/bun": "^1.2.17",
-    "drizzle-orm": "^0.44.2",
-    "ulid": "^3.0.1",
     "yaml": "^2.8.0",
     "zod": "^3.25.67"
   },
-  "devDependencies": {
-    "drizzle-kit": "^0.31.1"
+  "private": true,
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun run --watch src/index.ts"
   }
 }
