@@ -108,9 +108,24 @@ Bun.serve<{ target: URL; upstream: WebSocket }, {}>({
       signal: request.signal,
       headers,
     });
-    response.headers.delete("content-encoding");
-    response.headers.delete("content-length");
-    return response;
+
+    const responseHeaders = new Headers(response.headers);
+
+    responseHeaders.delete("content-encoding");
+    responseHeaders.delete("content-length");
+
+    const rawSetCookies = response.headers.getAll("set-cookie");
+    responseHeaders.delete("set-cookie");
+
+    for (const cookie of rawSetCookies) {
+      const rewritten = rewriteSetCookiePath(cookie, service.basePath ?? "/");
+      responseHeaders.append("set-cookie", rewritten);
+    }
+
+    return new Response(response.body, {
+      status: response.status,
+      headers: responseHeaders,
+    });
   },
 
   websocket: {
@@ -127,3 +142,18 @@ Bun.serve<{ target: URL; upstream: WebSocket }, {}>({
     },
   },
 });
+
+function rewriteSetCookiePath(cookie: string, basePath: string): string {
+  const normalizedBase = basePath.endsWith("/")
+    ? basePath.slice(0, -1)
+    : basePath;
+
+  return cookie.replace(/(?<=^|;\s*)path=(\/[^;]*)/i, (_match, pathValue) => {
+    if (pathValue.startsWith(normalizedBase)) {
+      return `Path=${pathValue}`;
+    }
+
+    const newPath = `${normalizedBase}${pathValue}`.replace(/\/{2,}/g, "/");
+    return `Path=${newPath}`;
+  });
+}
