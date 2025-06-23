@@ -2,7 +2,8 @@
 port: 80
 services:
   - name: gitea
-    origin: http://127.0.0.1:9001
+    target:
+      origin: http://127.0.0.1:9001
     basePath: /tea
     host:
       - git.local
