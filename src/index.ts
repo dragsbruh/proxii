@@ -31,7 +31,13 @@ Bun.serve<{ target: URL; upstream: WebSocket }, {}>({
       return hostAllowed && basePathAllowed;
     });
 
-    if (!service) return new Response("service not found", { status: 502 });
+    if (!service) {
+      if (config.publicDir) {
+        const response = await serveStatic(config.publicDir, target.pathname);
+        if (response) return response;
+      }
+      return new Response("service not found", { status: 502 });
+    }
 
     if (
       service.enforceTrailingSlash &&
@@ -42,35 +48,16 @@ Bun.serve<{ target: URL; upstream: WebSocket }, {}>({
     }
 
     if (service.trimBase && service.basePath) {
-      target.pathname = target.pathname.replace(service.basePath, "");
+      target.pathname = target.pathname.slice(service.basePath.length);
     }
 
     if (service.target.serveStatic) {
-      const filePath = join(service.target.staticDir, target.pathname);
-
-      const file = Bun.file(filePath);
-      if (
-        !filePath.startsWith(service.target.staticDir) ||
-        !(await exists(filePath))
-      ) {
-        return new Response("file not found", { status: 404 });
-      }
-
-      const stat = await file.stat();
-      if (stat.isDirectory()) {
-        const contents = ["..", ...(await readdir(filePath))]
-          .map((file) => `<a href="${join(url.pathname, file)}">${file}</a>`)
-          .join("<br>");
-        return new Response(contents, {
-          headers: {
-            "Content-Type": "text/html",
-          },
-        });
-      } else if (!stat.isFile()) {
-        return new Response("file not found", { status: 404 });
-      }
-
-      return new Response(file);
+      const response = await serveStatic(
+        service.target.staticDir,
+        target.pathname,
+        true
+      );
+      return response ?? new Response("file not found", { status: 404 });
     }
 
     const origin = new URL(service.target.origin);
@@ -156,4 +143,33 @@ function rewriteSetCookiePath(cookie: string, basePath: string): string {
     const newPath = `${normalizedBase}${pathValue}`.replace(/\/{2,}/g, "/");
     return `Path=${newPath}`;
   });
+}
+
+async function serveStatic(
+  staticDir: string,
+  pathname: string,
+  directoryListing: boolean = false
+) {
+  const filePath = join(staticDir, pathname);
+
+  const file = Bun.file(filePath);
+  if (!filePath.startsWith(staticDir) || !(await exists(filePath))) {
+    return null;
+  }
+
+  const stat = await file.stat();
+  if (stat.isDirectory() && directoryListing) {
+    const contents = ["..", ...(await readdir(filePath))]
+      .map((file) => `<a href="${join(pathname, file)}">${file}</a>`)
+      .join("<br>");
+    return new Response(contents, {
+      headers: {
+        "Content-Type": "text/html",
+      },
+    });
+  } else if (!stat.isFile()) {
+    return null;
+  }
+
+  return new Response(file);
 }

@@ -57,6 +57,12 @@ const serviceSchema = z.strictObject({
 const configSchema = z.strictObject({
   port: z.number().default(3000),
   services: z.array(serviceSchema),
+  publicDir: z
+    .string()
+    .optional()
+    .describe(
+      "only used to serve static files from when service is not found"
+    ),
 });
 
 const configPaths = [
