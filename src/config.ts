@@ -1,7 +1,7 @@
-import { z } from "zod";
-import yaml from "yaml";
 import { existsSync } from "fs";
 import { resolve } from "path";
+import { z } from "zod";
+import yaml from "yaml";
 
 const envSchema = z.object({
   DATABASE_URL: z.string(),

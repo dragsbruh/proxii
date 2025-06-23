@@ -1,12 +1,10 @@
-import { join, resolve } from "path";
-import { config } from "./config";
-import { exists } from "fs/promises";
-import { stat } from "fs/promises";
-import { readdir } from "fs/promises";
+import { config, ProxiiService } from "./config";
+import { readdir, exists } from "fs/promises";
+import { join } from "path";
 
 console.log("[proxii] server starting on port", config.port);
 
-Bun.serve<{ target: URL; upstream: WebSocket }, {}>({
+Bun.serve<{ target: URL; upstream: WebSocket; service: ProxiiService }, {}>({
   port: config.port,
   idleTimeout: 60,
 
@@ -78,7 +76,7 @@ Bun.serve<{ target: URL; upstream: WebSocket }, {}>({
       headers.get("upgrade")?.toLowerCase() === "websocket";
 
     if (isWebsocket) {
-      if (!server.upgrade(request, { data: { target } })) {
+      if (!server.upgrade(request, { data: { target, service } })) {
         return new Response("could not upgrade connection to websocket", {
           status: 426,
         });
@@ -86,15 +84,22 @@ Bun.serve<{ target: URL; upstream: WebSocket }, {}>({
       return undefined;
     }
 
-    const response = await fetch(target, {
-      method: request.method,
-      body: ["GET", "HEAD", "OPTIONS"].includes(request.method)
-        ? undefined
-        : request.body,
-      redirect: "manual",
-      signal: request.signal,
-      headers,
-    });
+    let response: Response;
+    try {
+      response = await fetch(target, {
+        method: request.method,
+        body: ["GET", "HEAD", "OPTIONS"].includes(request.method)
+          ? undefined
+          : request.body,
+        redirect: "manual",
+        signal: request.signal,
+        headers,
+      });
+    } catch (e) {
+      console.error(`[proxii] could not connect to service ${service.name}`);
+      console.error(e);
+      return new Response("service is unreachable", { status: 502 });
+    }
 
     const responseHeaders = new Headers(response.headers);
 
@@ -117,7 +122,16 @@ Bun.serve<{ target: URL; upstream: WebSocket }, {}>({
 
   websocket: {
     open(ws) {
-      ws.data.upstream = new WebSocket(ws.data.target);
+      try {
+        ws.data.upstream = new WebSocket(ws.data.target);
+      } catch (e) {
+        console.error(
+          `[proxii] could not connect to service ${ws.data.service.name}`
+        );
+        console.error(e);
+        ws.close(1013, "service is unreachable");
+        return;
+      }
       ws.data.upstream.onclose = (e) => ws.close(e.code, e.reason);
       ws.data.upstream.onmessage = (e) => ws.send(e.data);
     },
