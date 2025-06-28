@@ -17,6 +17,10 @@ const serviceSchema = z
           ),
       }),
       z.strictObject({
+        passThrough: z
+          .boolean()
+          .default(false)
+          .describe("skip this service entry if file is not found"),
         serveStatic: z.literal(true),
         staticDir: z
           .string()

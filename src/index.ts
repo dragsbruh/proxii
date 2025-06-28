@@ -15,16 +15,16 @@ Bun.serve<{ target: URL; upstream: WebSocket; service: ProxiiService }, {}>({
     const url = new URL(request.url);
     const target = new URL(url);
 
-    const [needsRedirect, service] = matchService(
+    const [needsRedirect, matchedServices] = matchServices(
       url.host,
       url.pathname,
       config.services
     );
     if (needsRedirect) {
-      return Response.redirect(service, 307);
+      return Response.redirect(matchedServices, 307);
     }
 
-    if (!service) {
+    if (matchedServices === null) {
       if (config.publicDir) {
         const response = await serveStatic(
           config.publicDir,
@@ -40,23 +40,49 @@ Bun.serve<{ target: URL; upstream: WebSocket; service: ProxiiService }, {}>({
       request.headers.get("x-forwarded-proto") ??
       (target.protocol.replace(":", "") === "https" ? "https" : "http");
 
-    if (service.enforceSecure && forwardedProto === "http") {
-      url.protocol = "https:";
-      return Response.redirect(url, 307);
-    }
+    let service: ProxiiService = matchedServices[0];
+    for (const probablyStaticService of matchedServices) {
+      if (!probablyStaticService.target.serveStatic) {
+        service = probablyStaticService;
+        break;
+      }
 
-    if (service.trimBase && service.basePath) {
-      target.pathname = target.pathname.slice(service.basePath.length);
-    }
+      let currentPathname = target.pathname;
 
+      if (probablyStaticService.enforceSecure && forwardedProto === "http") {
+        url.protocol = "https:";
+        return Response.redirect(url, 307);
+      }
+
+      if (probablyStaticService.trimBase && probablyStaticService.basePath) {
+        currentPathname = target.pathname.slice(
+          probablyStaticService.basePath.length
+        );
+      }
+
+      if (probablyStaticService.target.serveStatic) {
+        const response = await serveStatic(
+          probablyStaticService.target.staticDir,
+          target.pathname,
+          true,
+          probablyStaticService.basePath
+        );
+        if (!response && probablyStaticService.target.passThrough) {
+          continue;
+        };
+
+        return response ?? new Response("file not found", { status: 404 });
+      }
+
+      service = probablyStaticService;
+      break;
+    }
+    
     if (service.target.serveStatic) {
-      const response = await serveStatic(
-        service.target.staticDir,
-        target.pathname,
-        true,
-        service.basePath
+      console.error(
+        "unreachable: cannot serve a static service here, please report a bug and include what you were trying to do"
       );
-      return response ?? new Response("file not found", { status: 404 });
+      return new Response("proxii error", { status: 500 });
     }
 
     const origin = new URL(service.target.origin);
@@ -243,14 +269,15 @@ async function directoryListingTemplate(
 // returns [false, service] if we did successfully find service
 //         [true, target] if we need to redirect (to enforce trailing slash)
 //         [false, null] if we did not find any service
-function matchService(
+function matchServices(
   desiredHost: string,
   requestedPath: string,
   services: ProxiiService[]
-): [false, ProxiiService | null] | [true, string] {
+): [false, ProxiiService[] | null] | [true, string] {
   const normalizedRequestedPath = requestedPath.endsWith("/")
     ? requestedPath
     : requestedPath + "/";
+  const matched: ProxiiService[] = [];
 
   for (const service of services) {
     let hostAllowed = service.host === undefined;
@@ -280,7 +307,10 @@ function matchService(
       }
     }
 
-    if (pathAllowed) return [false, service];
+    if (pathAllowed) {
+      matched.push(service);
+    }
   }
-  return [false, null];
+
+  return [false, matched.length === 0 ? null : matched];
 }
