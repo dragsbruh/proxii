@@ -26,6 +26,10 @@ const serviceSchema = z
           .string()
           .describe("directory to serve static files from")
           .transform((path) => resolve(path)),
+        directoryListing: z
+          .boolean()
+          .default(true)
+          .describe("enable directory listing"),
       }),
     ]),
     host: z

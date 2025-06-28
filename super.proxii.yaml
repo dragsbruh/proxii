@@ -1,0 +1,38 @@
+# proxii.yml or /app/proxii.yaml
+port: 3000 # port to run proxii on
+
+cftunnel: true # whether to trust Cf-Connecting-IP header (default: false)
+publicDir: /web/public # directory to use to serve files from if service was not found (default: undefined)
+
+services:
+  - name: gitea # name (will be used for cookie isolation, if enabled)
+    target:
+      origin: http://localhost:9000/ # must be a complete url
+      cookies: isolate # prepends service name to set-cookie header's paths (default: isolate)
+    constraint:
+      enforceTrailingSlash: true # will redirect users to /tea/ if they access /tea (default: true)
+      trimBase: true # will strip basepath before forwarding (default: true)
+      basePath: /git/ # must start and end with /
+      hosts: # will only forward requests with this host header
+        - vinster.xyz
+        - localhost:3000 # specifying port is a stricter match, providing just `localhost` will match all localhost ports.
+    enforceSecure: true
+
+  - name: portainer
+    target:
+      origin: http://localhost:9001/
+      cookies: isolate
+    constraint:
+      basePath: /portainer/
+      hosts:
+        - sudo.vinster.xyz
+        - localhost # this will allow any port (in host header) to pass through. keep in mind the `port` config field! proxii can only run on one port
+
+  - name: warpgate
+    target:
+      origin: http://localhost:9002/
+      cookies: ignore # we dont need cookie isolation here since it all happens on root url (/)
+    constraint:
+      hosts:
+        - localhost
+        - sudo.vinster.xyz # remember! proxii matches services top to bottom! so more specific service constraints must be kept higher! if this service was above portainer, portainer couldve never been matched since portainer is just more constrained warpgate

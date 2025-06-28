@@ -63,13 +63,13 @@ Bun.serve<{ target: URL; upstream: WebSocket; service: ProxiiService }, {}>({
       if (probablyStaticService.target.serveStatic) {
         const response = await serveStatic(
           probablyStaticService.target.staticDir,
-          target.pathname,
-          true,
+          currentPathname,
+          probablyStaticService.target.directoryListing,
           probablyStaticService.basePath
         );
         if (!response && probablyStaticService.target.passThrough) {
           continue;
-        };
+        }
 
         return response ?? new Response("file not found", { status: 404 });
       }
@@ -77,7 +77,7 @@ Bun.serve<{ target: URL; upstream: WebSocket; service: ProxiiService }, {}>({
       service = probablyStaticService;
       break;
     }
-    
+
     if (service.target.serveStatic) {
       console.error(
         "unreachable: cannot serve a static service here, please report a bug and include what you were trying to do"
