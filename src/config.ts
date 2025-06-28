@@ -51,6 +51,10 @@ const serviceSchema = z
       .describe(
         "enforce a trailing slash if /basePath is accessed (redirects to /basePath/"
       ),
+    enforceSecure: z
+      .boolean()
+      .default(false)
+      .describe("redirect http requests to https"),
   })
   .transform((service) => ({
     ...service,

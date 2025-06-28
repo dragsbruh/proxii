@@ -21,7 +21,7 @@ Bun.serve<{ target: URL; upstream: WebSocket; service: ProxiiService }, {}>({
       config.services
     );
     if (needsRedirect) {
-      return Response.redirect(service, 302);
+      return Response.redirect(service, 307);
     }
 
     if (!service) {
@@ -34,6 +34,15 @@ Bun.serve<{ target: URL; upstream: WebSocket; service: ProxiiService }, {}>({
         if (response) return response;
       }
       return new Response("service not found", { status: 502 });
+    }
+
+    const forwardedProto =
+      request.headers.get("x-forwarded-proto") ??
+      (target.protocol.replace(":", "") === "https" ? "https" : "http");
+
+    if (service.enforceSecure && forwardedProto === "http") {
+      url.protocol = "https:";
+      return Response.redirect(url, 307);
     }
 
     if (service.trimBase && service.basePath) {
@@ -54,10 +63,6 @@ Bun.serve<{ target: URL; upstream: WebSocket; service: ProxiiService }, {}>({
 
     target.protocol = origin.protocol;
     target.host = origin.host;
-
-    const forwardedProto =
-      request.headers.get("x-forwarded-proto") ??
-      (target.protocol.startsWith("https") ? "https" : "http");
 
     const headers = new Headers(request.headers);
     headers.set("x-forwarded-proto", forwardedProto);
