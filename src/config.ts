@@ -55,6 +55,12 @@ const serviceSchema = z
       .boolean()
       .default(false)
       .describe("redirect http requests to https"),
+    isolateCookies: z
+      .boolean()
+      .default(true)
+      .describe(
+        "whether to isolate cookies (prepend basepath to all set-cookie) (default: true)"
+      ),
   })
   .transform((service) => ({
     ...service,

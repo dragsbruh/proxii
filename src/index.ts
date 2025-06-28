@@ -103,7 +103,7 @@ Bun.serve<{ target: URL; upstream: WebSocket; service: ProxiiService }, {}>({
     responseHeaders.delete("content-encoding");
     responseHeaders.delete("content-length");
 
-    if (service.basePath) {
+    if (service.basePath && service.isolateCookies) {
       const rawSetCookies = response.headers.getAll("set-cookie");
       responseHeaders.delete("set-cookie");
 
